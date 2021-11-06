@@ -1,5 +1,6 @@
 import xml.etree.ElementTree as xml
 import re
+from math import log10
 from stemming.porter2 import stem
 stop_words = open("englishST.txt","r")
 chop = lambda x: x[:-1]
@@ -219,25 +220,96 @@ def boolean_search(query, index):
 
             return docs1 
 
+def weight_of_term(term,document,index):
+    termfrequency = len(index[term][1][document])
+    documentfrequency = index[term][0]
+    weight = 1 + log10(termfrequency)
+    weight = weight * log10((len(list_of_all_docs))/documentfrequency)
+    return weight
+
+
+def TFDIF_search(query,index):
+    document_weights = {}
+    for i in query:
+        docs = list(index[i][1].keys())
+        for doc in docs:
+            if doc not in document_weights:
+                document_weights[doc] = weight_of_term(i,doc,index)
+            else:
+                document_weights[doc]+= weight_of_term(i,doc,index)
+    return document_weights
+
+
+
+    
+
+
+
+
 
 def term_search(term,index):
     return list(index[term][1].keys())
 
-def read_queries(txtfile):
+def read_queries(txtfile,index):
+    file_write = ""
     file = open(txtfile, "r")
     queries = file.readlines()
-    queries = list(map(lambda y: y[4:],list(map(lambda x: x.replace('\n',''),queries))))
+    queries = list(map(lambda y: y[(y.index(" ") + 1):],list(map(lambda x: x.replace('\n',''),queries))))
     print(queries)
+    query_no = 1
     for i in queries:
         if(i[0]=="#"):
             print("here goes the proximity search")
             proximity=i[1]
             terms = i[1:].split("(")[1]
             list_of_terms = stem_list_of_words(tokenization(case_folding(terms)))
-            proximity_search(list_of_terms[0],list_of_terms[1],proximity,index)
+            result = (proximity_search(list_of_terms[0],list_of_terms[1],proximity,index))
+            for j in result:
+                file_write += str(query_no) + "," + j + "\n"
+
         else:
             print("boolean searches go here")
-            print(boolean_search(i,index))
+            result = (boolean_search(i,index))
+            for j in result:
+                file_write += str(query_no) + "," + j + "\n"
+        query_no +=1
+
+    f = open("results.boolean.txt", "w")
+    f.write(file_write)
+    f.close()
+
+def tfdif_queries(txtfile,index):
+    file_write = ""
+    file = open(txtfile, "r")
+    queries = file.readlines()
+    queries = list(map(lambda x : tokenization(x), queries))
+    query_no = 1
+    for i in queries:
+        i = list(map(lambda x: case_folding(x), i))
+        i = stopping(i,stop_words)
+        i = stem_list_of_words(i)
+        result = TFDIF_search(i,index)
+        sorted_result = sorted(result, reverse = True, key = lambda x: result[x])
+        if len(sorted_result) > 150: sorted_result = sorted_result[:150]
+        for j in sorted_result:
+            file_write+= str(query_no)+","+j+","+str(result[j]) +"\n"
+        query_no +=1
+    f = open("results.ranked.txt", "w")
+    f.write(file_write)
+    f.close()
 
 
-read_queries("queries.lab2.txt")
+#read_queries("queries.lab2.txt")
+
+read_queries("queries.lab2.txt",index)
+
+def print_index(index):
+    file_write = ""
+    for i in index:
+        file_write += (i+":"+str(index[i][0])+"\n")
+        for j in index[i][1]:
+            doc_list = ",".join(list((map(lambda x : str(x),index[i][1][j]))))
+            file_write+=("\t"+j+": " + doc_list+ "\n")
+    f = open("index.txt", "w")
+    f.write(file_write)
+    f.close()
